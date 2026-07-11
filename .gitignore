@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+miyao
+miyao.txt
+.agents/
+rubbish/
+__pycache__/
+*.py[cod]
+data/
+.streamlit/*
+!.streamlit/config.toml
