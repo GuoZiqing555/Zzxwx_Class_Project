@@ -5,6 +5,8 @@ miyao
 miyao.txt
 .agents/
 rubbish/
+.venv/
+logs/
 __pycache__/
 *.py[cod]
 data/

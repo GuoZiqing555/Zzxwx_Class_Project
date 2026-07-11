@@ -1,163 +1,145 @@
-# 部署说明
+# Windows Server 部署说明
 
-仓库地址：<https://github.com/GuoZiqing555/Zzxwx_Class_Project.git>
+仓库：<https://github.com/GuoZiqing555/Zzxwx_Class_Project.git>
 
-本项目使用 Docker Compose 部署。Streamlit 仅在 Docker 内网监听 8504，Caddy
-对外提供 HTTPS。服务器只需要开放 22、80 和 443 端口。
+本说明适用于阿里云 Windows Server。Streamlit 只监听本机 `127.0.0.1:8504`，
+Caddy 对外提供 HTTPS，NSSM 负责将两者注册为开机自动启动的 Windows 服务。
 
-## 一、上传代码到 GitHub
+## 一、部署前准备
 
-在项目目录执行：
+1. 给域名添加 A 记录，指向服务器公网 IP。
+2. 在阿里云安全组入方向开放 TCP `80` 和 `443`。
+3. 如果需要远程桌面，保留 TCP `3389`；不要在公网开放 `8504`。
+4. 使用远程桌面登录服务器，打开“管理员 PowerShell”。
 
-```bash
-git init
-git add .
-git commit -m "Initial deployment"
-git branch -M main
-git remote add origin https://github.com/GuoZiqing555/Zzxwx_Class_Project.git
-git push -u origin main
+## 二、安装部署工具
+
+在管理员 PowerShell 中安装 Chocolatey：
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 ```
 
-如果已经配置过 `origin`，使用：
+安装 Git、Python、Caddy 和 NSSM：
 
-```bash
-git remote set-url origin https://github.com/GuoZiqing555/Zzxwx_Class_Project.git
-git push -u origin main
+```powershell
+choco install -y git python312 caddy nssm
 ```
 
-`.env`、`miyao` 和 `miyao.txt` 已加入 `.gitignore`，不要强制提交这些文件。
+安装结束后关闭 PowerShell，再重新打开一个管理员 PowerShell，使 PATH 生效。确认命令可用：
 
-## 二、准备阿里云服务器
-
-以下步骤适用于阿里云 Ubuntu 22.04/24.04。
-
-1. 在阿里云安全组的入方向放行 TCP `22`、`80`、`443`。
-2. 不要开放 `8504`，该端口只供 Docker 内部访问。
-3. 给域名添加 A 记录，指向服务器公网 IP。
-4. 等待域名解析生效。
-
-SSH 登录服务器，安装 Docker：
-
-```bash
-sudo apt update
-sudo apt install -y docker.io docker-compose-v2 git
-sudo systemctl enable --now docker
-sudo docker compose version
+```powershell
+git --version
+python --version
+caddy version
+nssm version
 ```
 
 ## 三、下载项目
 
-```bash
+建议安装到 `C:\sites`：
+
+```powershell
+New-Item -ItemType Directory -Force C:\sites | Out-Null
+Set-Location C:\sites
 git clone https://github.com/GuoZiqing555/Zzxwx_Class_Project.git
-cd Zzxwx_Class_Project
+Set-Location .\Zzxwx_Class_Project
 ```
 
 ## 四、网站所有者填写 API Key
 
-网站所有者通过 SSH 登录服务器，然后进入项目目录：
+复制配置模板并用记事本打开：
 
-```bash
-cd Zzxwx_Class_Project
-cp .env.example .env
-nano .env
+```powershell
+Copy-Item .env.example .env
+notepad .env
 ```
 
-将 `.env` 中的内容改为实际配置：
+填写实际配置：
 
 ```dotenv
 DEEPSEEK_API_KEY=实际的API密钥
 DEEPSEEK_MODEL=deepseek-v4-flash
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-
 DAILY_API_CALL_LIMIT=50
 QUOTA_TIMEZONE=Asia/Shanghai
-QUOTA_DB_PATH=/app/data/quota.sqlite3
-
+QUOTA_DB_PATH=data/quota.sqlite3
 DOMAIN=实际域名.example.com
 ```
 
-`DOMAIN` 只填写域名，不要添加 `http://`、`https://`、路径或端口。
+`DOMAIN` 只填写域名，不添加 `http://`、`https://`、路径或端口。保存并关闭记事本。
+API Key 只保存在服务器的 `.env`，不需要上传到 GitHub。
 
-在 nano 中按 `Ctrl+O`、回车保存，再按 `Ctrl+X` 退出。随后限制文件权限：
+## 五、一键部署
 
-```bash
-chmod 600 .env
+仍在项目目录中，以管理员 PowerShell 执行：
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+.\deploy-windows.ps1 -Domain "实际域名.example.com"
 ```
 
-API Key 只保存在服务器的 `.env` 中，不需要上传到 GitHub。即使密钥有限额，也不建议
-写入仓库，因为公开仓库中的历史提交很难彻底清除。
+脚本会自动完成以下操作：
 
-## 五、启动网站
+- 创建 Python 虚拟环境并安装固定版本依赖
+- 注册并启动 `ZzxwxApp` 服务
+- 注册并启动 `ZzxwxCaddy` 服务
+- 设置开机自动启动
+- 开放 Windows 防火墙 TCP 80/443
+- 将日志写入项目的 `logs` 目录
 
-在服务器的项目目录执行：
-
-```bash
-sudo docker compose config --quiet
-sudo docker compose up -d --build
-sudo docker compose ps
-```
-
-正常情况下，`app` 最终显示 `healthy`，`caddy` 显示 `running`。查看启动日志：
-
-```bash
-sudo docker compose logs --tail=100 app caddy
-```
-
-首次启动时，Caddy 会自动申请 HTTPS 证书，通常需要几十秒。然后访问：
+部署完成后访问：
 
 ```text
 https://实际域名
 ```
 
-也可以在服务器上检查：
+Caddy 首次申请 HTTPS 证书可能需要几十秒。如果打不开，先检查服务和日志：
 
-```bash
-curl -I https://实际域名
+```powershell
+Get-Service ZzxwxApp,ZzxwxCaddy
+Get-Content .\logs\app-error.log -Tail 100
+Get-Content .\logs\caddy-error.log -Tail 100
 ```
-
-如果 HTTPS 证书申请失败，检查域名 A 记录是否指向当前服务器公网 IP，以及阿里云
-安全组是否已经放行 80 和 443。
 
 ## 六、更新网站
 
-代码推送到 GitHub 后，在服务器执行：
+管理员 PowerShell 执行：
 
-```bash
-cd Zzxwx_Class_Project
+```powershell
+Set-Location C:\sites\Zzxwx_Class_Project
 git pull
-sudo docker compose up -d --build
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Restart-Service ZzxwxApp
+Restart-Service ZzxwxCaddy
 ```
 
-## 七、常用维护命令
+## 七、更换 API Key
 
-```bash
-# 查看容器状态
-sudo docker compose ps
-
-# 查看实时日志
-sudo docker compose logs -f
-
-# 重启网站
-sudo docker compose restart
-
-# 停止网站
-sudo docker compose down
-
-# 再次启动
-sudo docker compose up -d
+```powershell
+Set-Location C:\sites\Zzxwx_Class_Project
+notepad .env
+Restart-Service ZzxwxApp
 ```
 
-普通更新、重启或 `docker compose down` 不会删除每日配额数据。不要执行
-`docker compose down -v`，除非确定需要删除持久化数据。
+保存新的 `DEEPSEEK_API_KEY` 后重启应用服务即可生效。
 
-## 八、更换 API Key
+## 八、常用维护命令
 
-网站所有者登录服务器后执行：
+```powershell
+# 查看状态
+Get-Service ZzxwxApp,ZzxwxCaddy
 
-```bash
-cd Zzxwx_Class_Project
-nano .env
-sudo docker compose up -d --force-recreate app
+# 重启
+Restart-Service ZzxwxApp,ZzxwxCaddy
+
+# 停止
+Stop-Service ZzxwxCaddy,ZzxwxApp
+
+# 启动
+Start-Service ZzxwxApp,ZzxwxCaddy
 ```
 
-修改 `DEEPSEEK_API_KEY` 并保存后，重新创建应用容器即可生效。
+每日配额数据库保存在 `data\quota.sqlite3`。更新代码或重启服务不会删除该文件。
