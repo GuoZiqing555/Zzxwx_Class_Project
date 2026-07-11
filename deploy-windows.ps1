@@ -66,12 +66,8 @@ if (-not (Test-Path -LiteralPath $envFile)) {
 }
 
 $apiKey = Get-DotEnvValue 'DEEPSEEK_API_KEY'
-$domain = Get-DotEnvValue 'DOMAIN'
 if (-not $apiKey -or $apiKey -like 'replace_*' -or $apiKey -like '*actual*') {
     throw 'Set DEEPSEEK_API_KEY in .env before deployment.'
-}
-if (-not $domain -or $domain -eq 'demo.example.com' -or $domain -notmatch '^[A-Za-z0-9.-]+$') {
-    throw 'Set DOMAIN in .env to a valid hostname without protocol, path or port.'
 }
 
 New-Item -ItemType Directory -Force -Path $runtimeDir, $downloadDir, $pythonDir, $caddyDir, $logsDir, $dataDir | Out-Null
@@ -85,7 +81,6 @@ if ($existingOwnTasks -and -not (Test-Path -LiteralPath $markerFile)) {
 Stop-OwnTask $proxyTaskName
 Stop-OwnTask $appTaskName
 Assert-PortFree 80
-Assert-PortFree 443
 Assert-PortFree 8504
 
 $pythonZip = Join-Path $downloadDir "python-$pythonVersion-embed-amd64.zip"
@@ -146,7 +141,7 @@ $caddyText = @"
     }
 }
 
-$domain {
+:80 {
     encode zstd gzip
     header {
         X-Content-Type-Options "nosniff"
@@ -211,7 +206,7 @@ if (-not $healthy) {
     throw "Application health check failed. See $appLog"
 }
 
-foreach ($port in @(80, 443)) {
+foreach ($port in @(80)) {
     $ruleName = "ZzxwxClassProject-TCP-$port"
     if (-not (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
         New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $port | Out-Null
@@ -219,6 +214,6 @@ foreach ($port in @(80, 443)) {
 }
 
 Start-ScheduledTask -TaskName $proxyTaskName
-Write-Host "Deployment complete: https://$domain"
+Write-Host 'Deployment complete. Open http://SERVER_PUBLIC_IP in a browser.'
 Write-Host "Logs: $logsDir"
 Write-Host 'Existing Python installations, port 3008 and unrelated processes were not modified.'

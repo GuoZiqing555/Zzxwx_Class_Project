@@ -1,7 +1,9 @@
-# Windows Server 快速部署
+# Windows Server 快速部署（公网 IP 访问）
 
-适用环境：Windows Server 2022。部署脚本使用项目内的独立运行环境，不安装 Git，
-不修改系统 PATH，不使用或覆盖服务器已有的 Python，也不会停止旧网站或其他未知进程。
+适用环境：Windows Server 2022，没有域名，直接通过服务器公网 IP 访问。
+
+部署脚本使用项目内的独立运行环境，不安装 Git，不修改系统 PATH，不使用或覆盖服务器
+已有的 Python，也不会停止旧网站或其他未知进程。
 
 ## 1. 下载并解压
 
@@ -17,17 +19,16 @@ C:\sites\Zzxwx_Class_Project
 
 不要覆盖旧网站目录。
 
-## 2. 填写 API Key 和域名
+## 2. 填写 API Key
 
-进入 `C:\sites\Zzxwx_Class_Project`，复制 `.env.example` 并将副本命名为 `.env`。
-如果资源管理器隐藏扩展名，建议在项目目录打开 PowerShell 后执行：
+进入 `C:\sites\Zzxwx_Class_Project`，在项目目录打开 PowerShell，执行：
 
 ```powershell
 Copy-Item .env.example .env
 notepad .env
 ```
 
-填写：
+只需要把 `DEEPSEEK_API_KEY` 改成实际密钥：
 
 ```dotenv
 DEEPSEEK_API_KEY=实际API密钥
@@ -36,15 +37,23 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com
 DAILY_API_CALL_LIMIT=50
 QUOTA_TIMEZONE=Asia/Shanghai
 QUOTA_DB_PATH=data/quota.sqlite3
-DOMAIN=实际子域名.example.com
+DOMAIN=
 ```
 
-`DOMAIN` 只填写域名，不包含 `https://`、路径或端口。该域名的 A 记录必须已经指向
-服务器公网 IP。阿里云安全组需要放行 TCP 80/443，不要开放 8504。
+保存并关闭记事本。API Key 只保存在服务器的 `.env` 中，不会发送给访问网站的用户。
 
-## 3. 运行快速部署脚本
+## 3. 放行端口
 
-在项目文件夹空白处按住 Shift 并右键，选择“在此处打开 PowerShell”，然后执行：
+在阿里云安全组入方向添加 TCP `80`，授权对象根据实际访问范围设置：
+
+- 仅内部人员使用：填写办公网络的固定公网 IP，例如 `1.2.3.4/32`，更安全。
+- 需要所有人访问：填写 `0.0.0.0/0`。
+
+不要开放 8504。脚本会添加一条 TCP 80 的 Windows 防火墙规则，但阿里云安全组仍需手动配置。
+
+## 4. 运行快速部署脚本
+
+在项目目录打开“管理员 PowerShell”，执行：
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
@@ -57,24 +66,33 @@ Set-ExecutionPolicy Bypass -Scope Process -Force
 完成后访问：
 
 ```text
-https://实际子域名.example.com
+http://服务器公网IP
 ```
 
-## 安全边界
+注意是 `http://`，不是 `https://`，也不需要添加 `:8504`。
+
+## 重要安全提示
+
+没有域名时，本方案使用普通 HTTP，浏览器与服务器之间的内容没有加密。API Key 始终只在
+服务器端，不会因此直接暴露；但用户填写的沟通内容可能被网络链路上的第三方看到。
+
+建议优先在阿里云安全组中将 TCP 80 限制为指定办公公网 IP。若网站需要长期公开使用或
+处理敏感信息，应购买并备案域名，之后再启用 HTTPS。
+
+## 脚本安全边界
 
 脚本只会：
 
 - 写入当前项目的 `.runtime`、`data` 和 `logs` 目录
 - 创建 `ZzxwxClassProject-App` 和 `ZzxwxClassProject-Caddy` 两个计划任务
-- 新增 `ZzxwxClassProject-TCP-80/443` 两条 Windows 防火墙规则，不修改已有规则
+- 新增 `ZzxwxClassProject-TCP-80` 一条 Windows 防火墙规则，不修改已有规则
 - 使用本机回环地址 `127.0.0.1:8504`
-- 在确认 80、443、8504 均未被占用后启动
+- 在确认 80 和 8504 均未被占用后启动
 
 脚本不会修改已有 Python、PATH、旧网站目录、3008 端口或未知进程。若目标端口已被占用，
 脚本会显示占用 PID 并退出，不会结束该进程。
 
-应用和代理日志分别保存在 `logs\app.log` 与 `logs\caddy.log`；Caddy 的 HTTPS 证书
-数据保存在 `.runtime\caddy-data`，不会写入其他网站目录。
+应用和代理日志分别保存在 `logs\app.log` 与 `logs\caddy.log`。
 
 ## 检查状态
 
@@ -83,19 +101,18 @@ Get-ScheduledTask ZzxwxClassProject-App,ZzxwxClassProject-Caddy |
     Select-Object TaskName,State
 
 Invoke-WebRequest http://127.0.0.1:8504/_stcore/health -UseBasicParsing
+Invoke-WebRequest http://127.0.0.1/ -UseBasicParsing
 ```
 
 ## 更新
 
-再次从 GitHub 下载最新 ZIP。先保留旧目录中的 `.env` 和 `data` 文件夹，再用新文件覆盖
-项目代码，最后重新运行：
+再次下载最新 ZIP。保留旧目录中的 `.env`、`data` 和 `.runtime`，用新文件覆盖项目代码，
+然后重新运行：
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
 .\deploy-windows.ps1
 ```
-
-不要删除 `.env`、`data` 或 `.runtime`。
 
 ## 停止或恢复
 
