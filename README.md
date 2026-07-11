@@ -1,145 +1,111 @@
-# Windows Server 部署说明
+# Windows Server 快速部署
 
-仓库：<https://github.com/GuoZiqing555/Zzxwx_Class_Project.git>
+适用环境：Windows Server 2022。部署脚本使用项目内的独立运行环境，不安装 Git，
+不修改系统 PATH，不使用或覆盖服务器已有的 Python，也不会停止旧网站或其他未知进程。
 
-本说明适用于阿里云 Windows Server。Streamlit 只监听本机 `127.0.0.1:8504`，
-Caddy 对外提供 HTTPS，NSSM 负责将两者注册为开机自动启动的 Windows 服务。
+## 1. 下载并解压
 
-## 一、部署前准备
+在服务器浏览器打开：
 
-1. 给域名添加 A 记录，指向服务器公网 IP。
-2. 在阿里云安全组入方向开放 TCP `80` 和 `443`。
-3. 如果需要远程桌面，保留 TCP `3389`；不要在公网开放 `8504`。
-4. 使用远程桌面登录服务器，打开“管理员 PowerShell”。
+<https://github.com/GuoZiqing555/Zzxwx_Class_Project/archive/refs/heads/main.zip>
 
-## 二、安装部署工具
+下载后解压，将解压得到的文件夹移动并改名为：
 
-在管理员 PowerShell 中安装 Chocolatey：
-
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+```text
+C:\sites\Zzxwx_Class_Project
 ```
 
-安装 Git、Python、Caddy 和 NSSM：
+不要覆盖旧网站目录。
 
-```powershell
-choco install -y git python312 caddy nssm
-```
+## 2. 填写 API Key 和域名
 
-安装结束后关闭 PowerShell，再重新打开一个管理员 PowerShell，使 PATH 生效。确认命令可用：
-
-```powershell
-git --version
-python --version
-caddy version
-nssm version
-```
-
-## 三、下载项目
-
-建议安装到 `C:\sites`：
-
-```powershell
-New-Item -ItemType Directory -Force C:\sites | Out-Null
-Set-Location C:\sites
-git clone https://github.com/GuoZiqing555/Zzxwx_Class_Project.git
-Set-Location .\Zzxwx_Class_Project
-```
-
-## 四、网站所有者填写 API Key
-
-复制配置模板并用记事本打开：
+进入 `C:\sites\Zzxwx_Class_Project`，复制 `.env.example` 并将副本命名为 `.env`。
+如果资源管理器隐藏扩展名，建议在项目目录打开 PowerShell 后执行：
 
 ```powershell
 Copy-Item .env.example .env
 notepad .env
 ```
 
-填写实际配置：
+填写：
 
 ```dotenv
-DEEPSEEK_API_KEY=实际的API密钥
+DEEPSEEK_API_KEY=实际API密钥
 DEEPSEEK_MODEL=deepseek-v4-flash
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DAILY_API_CALL_LIMIT=50
 QUOTA_TIMEZONE=Asia/Shanghai
 QUOTA_DB_PATH=data/quota.sqlite3
-DOMAIN=实际域名.example.com
+DOMAIN=实际子域名.example.com
 ```
 
-`DOMAIN` 只填写域名，不添加 `http://`、`https://`、路径或端口。保存并关闭记事本。
-API Key 只保存在服务器的 `.env`，不需要上传到 GitHub。
+`DOMAIN` 只填写域名，不包含 `https://`、路径或端口。该域名的 A 记录必须已经指向
+服务器公网 IP。阿里云安全组需要放行 TCP 80/443，不要开放 8504。
 
-## 五、一键部署
+## 3. 运行快速部署脚本
 
-仍在项目目录中，以管理员 PowerShell 执行：
+在项目文件夹空白处按住 Shift 并右键，选择“在此处打开 PowerShell”，然后执行：
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
-.\deploy-windows.ps1 -Domain "实际域名.example.com"
+.\deploy-windows.ps1
 ```
 
-脚本会自动完成以下操作：
+脚本会自动下载项目专用的 Python 3.12 64 位和 Caddy，全部放在项目的 `.runtime`
+目录中，并创建两个独立的计划任务用于开机启动。首次运行需要下载依赖，通常需要几分钟。
 
-- 创建 Python 虚拟环境并安装固定版本依赖
-- 注册并启动 `ZzxwxApp` 服务
-- 注册并启动 `ZzxwxCaddy` 服务
-- 设置开机自动启动
-- 开放 Windows 防火墙 TCP 80/443
-- 将日志写入项目的 `logs` 目录
-
-部署完成后访问：
+完成后访问：
 
 ```text
-https://实际域名
+https://实际子域名.example.com
 ```
 
-Caddy 首次申请 HTTPS 证书可能需要几十秒。如果打不开，先检查服务和日志：
+## 安全边界
+
+脚本只会：
+
+- 写入当前项目的 `.runtime`、`data` 和 `logs` 目录
+- 创建 `ZzxwxClassProject-App` 和 `ZzxwxClassProject-Caddy` 两个计划任务
+- 新增 `ZzxwxClassProject-TCP-80/443` 两条 Windows 防火墙规则，不修改已有规则
+- 使用本机回环地址 `127.0.0.1:8504`
+- 在确认 80、443、8504 均未被占用后启动
+
+脚本不会修改已有 Python、PATH、旧网站目录、3008 端口或未知进程。若目标端口已被占用，
+脚本会显示占用 PID 并退出，不会结束该进程。
+
+应用和代理日志分别保存在 `logs\app.log` 与 `logs\caddy.log`；Caddy 的 HTTPS 证书
+数据保存在 `.runtime\caddy-data`，不会写入其他网站目录。
+
+## 检查状态
 
 ```powershell
-Get-Service ZzxwxApp,ZzxwxCaddy
-Get-Content .\logs\app-error.log -Tail 100
-Get-Content .\logs\caddy-error.log -Tail 100
+Get-ScheduledTask ZzxwxClassProject-App,ZzxwxClassProject-Caddy |
+    Select-Object TaskName,State
+
+Invoke-WebRequest http://127.0.0.1:8504/_stcore/health -UseBasicParsing
 ```
 
-## 六、更新网站
+## 更新
 
-管理员 PowerShell 执行：
+再次从 GitHub 下载最新 ZIP。先保留旧目录中的 `.env` 和 `data` 文件夹，再用新文件覆盖
+项目代码，最后重新运行：
 
 ```powershell
-Set-Location C:\sites\Zzxwx_Class_Project
-git pull
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-Restart-Service ZzxwxApp
-Restart-Service ZzxwxCaddy
+Set-ExecutionPolicy Bypass -Scope Process -Force
+.\deploy-windows.ps1
 ```
 
-## 七、更换 API Key
+不要删除 `.env`、`data` 或 `.runtime`。
+
+## 停止或恢复
 
 ```powershell
-Set-Location C:\sites\Zzxwx_Class_Project
-notepad .env
-Restart-Service ZzxwxApp
+# 停止本项目，不影响其他网站
+Stop-ScheduledTask -TaskName ZzxwxClassProject-Caddy
+Stop-ScheduledTask -TaskName ZzxwxClassProject-App
+
+# 恢复本项目
+Start-ScheduledTask -TaskName ZzxwxClassProject-App
+Start-Sleep -Seconds 3
+Start-ScheduledTask -TaskName ZzxwxClassProject-Caddy
 ```
-
-保存新的 `DEEPSEEK_API_KEY` 后重启应用服务即可生效。
-
-## 八、常用维护命令
-
-```powershell
-# 查看状态
-Get-Service ZzxwxApp,ZzxwxCaddy
-
-# 重启
-Restart-Service ZzxwxApp,ZzxwxCaddy
-
-# 停止
-Stop-Service ZzxwxCaddy,ZzxwxApp
-
-# 启动
-Start-Service ZzxwxApp,ZzxwxCaddy
-```
-
-每日配额数据库保存在 `data\quota.sqlite3`。更新代码或重启服务不会删除该文件。

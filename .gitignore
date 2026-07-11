@@ -7,6 +7,8 @@ miyao.txt
 rubbish/
 .venv/
 logs/
+.runtime/
+阿里云服务器环境与部署适配说明.md
 __pycache__/
 *.py[cod]
 data/
