@@ -95,6 +95,15 @@ if (-not (Test-Path (Join-Path $pythonDir 'python.exe'))) {
 }
 
 $pythonExe = Join-Path $pythonDir 'python.exe'
+$pythonCheck = @'
+import struct
+import sys
+if sys.version_info[:2] != (3, 12) or struct.calcsize('P') * 8 != 64:
+    raise SystemExit('Python 3.12 64-bit is required')
+print('Isolated Python verified: %s (%s-bit)' % (sys.version.split()[0], struct.calcsize('P') * 8))
+'@
+& $pythonExe -c $pythonCheck
+if ($LASTEXITCODE -ne 0) { throw 'The isolated runtime is not Python 3.12 64-bit.' }
 $getPip = Join-Path $downloadDir 'get-pip.py'
 Download-File 'https://bootstrap.pypa.io/get-pip.py' $getPip
 & $pythonExe $getPip --disable-pip-version-check
