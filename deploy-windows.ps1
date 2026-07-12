@@ -122,7 +122,15 @@ if (-not $checksumLine) { throw 'Caddy checksum was not found in the official ch
 $expectedChecksum = ($checksumLine -split '\s+', 2)[0].ToUpperInvariant()
 $checksumAlgorithm = if ($expectedChecksum.Length -eq 128) { 'SHA512' } elseif ($expectedChecksum.Length -eq 64) { 'SHA256' } else { throw 'Unsupported Caddy checksum format.' }
 $actualChecksum = (Get-FileHash -LiteralPath $caddyZip -Algorithm $checksumAlgorithm).Hash
-if ($actualChecksum -ne $expectedChecksum) { throw 'Caddy download checksum verification failed.' }
+if ($actualChecksum -ne $expectedChecksum) {
+    Write-Warning 'Existing Caddy archive failed checksum verification; downloading a fresh copy.'
+    Remove-Item -LiteralPath $caddyZip -Force
+    Download-File "https://github.com/caddyserver/caddy/releases/download/v$caddyVersion/caddy_${caddyVersion}_windows_amd64.zip" $caddyZip
+    $actualChecksum = (Get-FileHash -LiteralPath $caddyZip -Algorithm $checksumAlgorithm).Hash
+    if ($actualChecksum -ne $expectedChecksum) {
+        throw "Caddy download checksum verification failed. Expected $expectedChecksum but got $actualChecksum."
+    }
+}
 if (-not (Test-Path (Join-Path $caddyDir 'caddy.exe'))) {
     Expand-Archive -LiteralPath $caddyZip -DestinationPath $caddyDir -Force
 }
